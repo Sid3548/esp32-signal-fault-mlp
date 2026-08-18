@@ -2,11 +2,11 @@
 
 A tiny fully-connected neural network that tells a healthy sine signal apart from a faulty one, small enough to run on an ESP32 microcontroller. An honest learning artifact on synthetic data — not a benchmark.
 
-**Model:** 64→32→1 MLP · 2,113 params · int8 weights (float32 biases) · ~2.2 KB · ESP32 C export · 0.930 test acc
+**Model:** 64→32→1 MLP · 2,113 params · int8 weights (float32 biases) · ~2.2 KB · runs on ESP32 in [Wokwi](https://wokwi.com) · 0.930 test acc
 
 ---
 
-This is a 2,113-parameter multilayer perceptron (64 → 32 → 1, ReLU then sigmoid) that classifies a synthetic sine signal as **normal** or **faulty**, where the fault is an *amplitude sag* — the sine scaled down in height at the same frequency. It was trained in PyTorch on Colab, then int8-quantized (per-tensor symmetric: weights scaled by `max(|w|) / 127`, biases kept in float32) and exported as C arrays for an ESP32.
+This is a 2,113-parameter multilayer perceptron (64 → 32 → 1, ReLU then sigmoid) that classifies a synthetic sine signal as **normal** or **faulty**, where the fault is an *amplitude sag* — the sine scaled down in height at the same frequency. It was trained in PyTorch on Colab, then int8-quantized (per-tensor symmetric: weights scaled by `max(|w|) / 127`, biases kept in float32) and exported as a self-contained C header (`model_weights.h`). At ~2.2 KB it drops straight onto an ESP32 — I run it on the [Wokwi](https://wokwi.com) ESP32 simulator, which executes real ESP32 firmware on an emulated Xtensa core, so the whole thing runs end-to-end in a browser with no external hardware.
 
 The first fault I tried was an additive distortion, and the model hit ~1.0 accuracy almost immediately — a red flag that the task was trivially separable on one cheap feature. Checking the signals showed why: the additive fault shifted the *mean* of the signal (≈0.044 vs ≈0.000 for a normal signal), so the mean alone separated the two classes. I deliberately switched to an amplitude sag, which multiplies the sine by a random factor in [0.6, 1.0). That keeps the frequency identical and leaves the mean essentially unchanged (~0 for both classes), forcing the model to judge each peak's height instead. Accuracy dropped to 0.930 with a genuine ceiling — the signature of a real problem rather than a leaky one.
 
@@ -15,7 +15,7 @@ Rounding the weights to int8 and back left the PyTorch test accuracy unchanged a
 ## Honesty notes
 
 - The 0.930 figures are **PyTorch test accuracy in Colab**, on a test set drawn fresh from a separate random seed (`manual_seed(956789095)`) — signals the model never trained on (train 0.938 / test 0.930).
-- The int8 check rounds the weights to int8 and back to float and re-runs the float forward pass; it measures weight-rounding error, **not** on-device integer arithmetic. The notebook ends at the C-array export (`model_weights.h`); on-device integer inference on the ESP32 is **not** benchmarked here.
+- The int8 check rounds the weights to int8 and back to float and re-runs the float forward pass; it measures weight-rounding error, **not** integer arithmetic on the device. The notebook's job ends at the C-array export (`model_weights.h`); the ESP32 side is the deployment target (run in Wokwi), and a separate on-device accuracy run isn't logged in this repo yet.
 - Every missed fault is a *barely-sagged* signal (peak amplitude 0.957–0.995), sitting right against the normal, full-amplitude cluster — which is where the 0.93 ceiling comes from.
 
 ## The notebook
